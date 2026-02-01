@@ -38,7 +38,8 @@ class DataStorage:
             },
             "settings": {
                 "channels_text": "😇 Чтобы забрать приз, выполни простое задание.\n\nПодпишись на эти каналы спонсоров 👇️\n@durov\n@telegram",
-                "redirect_url": "https://share.google/images/nN32IC20Y2cYIEIkH"
+                "redirect_url": "https://share.google/images/nN32IC20Y2cYIEIkH",
+                "channel_link": "@StarsRaysbot"  # НОВОЕ: Ссылка на канал для кнопки "Забрать приз"
             }
         }
     
@@ -66,11 +67,13 @@ class DataStorage:
             self.data["stats"]["stars_given"] += stars
             self.save_data()
     
-    def update_settings(self, channels_text=None, redirect_url=None):
+    def update_settings(self, channels_text=None, redirect_url=None, channel_link=None):
         if channels_text:
             self.data["settings"]["channels_text"] = channels_text
         if redirect_url:
             self.data["settings"]["redirect_url"] = redirect_url
+        if channel_link:
+            self.data["settings"]["channel_link"] = channel_link
         self.save_data()
     
     def get_settings(self):
@@ -483,6 +486,31 @@ HTML_TEMPLATES = {
         .login-button { display: block; width: 100%; padding: 15px; background: #4FC3F7; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 20px; }
         .error-message { color: #f44336; text-align: center; margin-top: 15px; display: none; }
         .back-link { display: block; text-align: center; margin-top: 25px; color: #bbdefb; text-decoration: none; }
+        
+        /* Admin Panel Styles */
+        .admin-panel { max-width: 500px; margin: 0 auto; padding: 20px; width: 100%; }
+        .admin-header { text-align: center; margin-bottom: 40px; }
+        .admin-title { font-size: 28px; font-weight: bold; color: #FFD700; margin-bottom: 10px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 40px 0; }
+        .stat-card { background: rgba(255,255,255,0.05); border-radius: 20px; padding: 20px; text-align: center; border: 1px solid rgba(255,215,0,0.2); }
+        .stat-value { font-size: 28px; font-weight: bold; color: #FFD700; }
+        .stat-label { font-size: 12px; color: #bbdefb; margin-top: 5px; }
+        .settings-section { background: rgba(255,255,255,0.05); border-radius: 25px; padding: 30px; margin-bottom: 30px; border: 2px solid rgba(255,215,0,0.3); }
+        .section-title { font-size: 20px; color: #FFD700; margin-bottom: 25px; display: flex; align-items: center; }
+        .section-title i { margin-right: 10px; font-size: 24px; }
+        textarea, input { width: 100%; padding: 15px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; color: white; font-size: 14px; margin-bottom: 15px; }
+        textarea { min-height: 120px; resize: vertical; }
+        .buttons-row { display: flex; gap: 15px; margin-top: 40px; }
+        .btn { flex: 1; padding: 15px; border: none; border-radius: 15px; font-weight: bold; cursor: pointer; font-size: 16px; }
+        .btn-save { background: #00C853; color: white; }
+        .btn-save:hover { background: #00E676; }
+        .btn-logout { background: #f44336; color: white; }
+        .btn-logout:hover { background: #EF5350; }
+        .btn-test { background: #4FC3F7; color: white; }
+        .btn-test:hover { background: #29B6F6; }
+        .info-note { font-size: 12px; color: #bbdefb; margin-top: 10px; }
+        .test-result { background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.3); border-radius: 12px; padding: 15px; margin-top: 15px; display: none; }
+        .test-result.error { background: rgba(244,67,54,0.1); border-color: rgba(244,67,54,0.3); }
     </style>
 </head>
 <body>
@@ -501,34 +529,50 @@ HTML_TEMPLATES = {
         <a href="/" class="back-link">← Вернуться на главную</a>
     </div>
     
-    <div style="display: none;" id="adminPanel">
-        <div style="max-width: 500px; margin: 0 auto; padding: 20px;">
-            <h1 style="text-align: center; color: #FFD700;">🛡️ Админ панель</h1>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 40px 0;">
-                <div style="background: rgba(255,255,255,0.05); border-radius: 20px; padding: 20px; text-align: center;">
-                    <div style="font-size: 28px; font-weight: bold; color: #FFD700;" id="totalUsers">0</div>
-                    <div style="font-size: 12px; color: #bbdefb;">Всего пользователей</div>
-                </div>
-                <div style="background: rgba(255,255,255,0.05); border-radius: 20px; padding: 20px; text-align: center;">
-                    <div style="font-size: 28px; font-weight: bold; color: #FFD700;" id="starsGiven">0</div>
-                    <div style="font-size: 12px; color: #bbdefb;">Stars роздано</div>
-                </div>
+    <div class="admin-panel" id="adminPanel" style="display: none;">
+        <div class="admin-header">
+            <div class="admin-title">🛡️ Админ панель</div>
+            <div style="color: #bbdefb; font-size: 14px;">Управление настройками Stars раздачи</div>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalUsers">0</div>
+                <div class="stat-label">Всего пользователей</div>
             </div>
-            
-            <div style="background: rgba(255,255,255,0.05); border-radius: 25px; padding: 30px; margin-bottom: 30px; border: 2px solid rgba(255,215,0,0.3);">
-                <h2 style="color: #FFD700; margin-bottom: 25px;">📝 Текст для подписки</h2>
-                <textarea id="channelsText" style="width: 100%; padding: 15px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; color: white; min-height: 120px; margin-bottom: 15px;"></textarea>
+            <div class="stat-card">
+                <div class="stat-value" id="starsGiven">0</div>
+                <div class="stat-label">Stars роздано</div>
             </div>
-            
-            <div style="background: rgba(255,255,255,0.05); border-radius: 25px; padding: 30px; margin-bottom: 30px; border: 2px solid rgba(255,215,0,0.3);">
-                <h2 style="color: #FFD700; margin-bottom: 25px;">🔗 Ссылка для кнопки</h2>
-                <input type="url" id="redirectUrl" style="width: 100%; padding: 15px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; color: white; margin-bottom: 15px;">
-            </div>
-            
-            <div style="display: flex; gap: 15px; margin-top: 40px;">
-                <button onclick="saveSettings()" style="flex: 1; padding: 15px; background: #00C853; color: white; border: none; border-radius: 15px; font-weight: bold; cursor: pointer;">💾 Сохранить</button>
-                <button onclick="logout()" style="flex: 1; padding: 15px; background: #f44336; color: white; border: none; border-radius: 15px; font-weight: bold; cursor: pointer;">🔒 Выйти</button>
-            </div>
+        </div>
+        
+        <div class="settings-section">
+            <div class="section-title">📝 Текст для подписки на каналы</div>
+            <textarea id="channelsText" placeholder="😇 Чтобы забрать приз, выполни простое задание.
+
+Подпишись на эти каналы спонсоров 👇️
+@durov
+@telegram"></textarea>
+            <div class="info-note">Этот текст показывается после выбора ячейки</div>
+        </div>
+        
+        <div class="settings-section">
+            <div class="section-title">🔗 Ссылка для кнопки "Продолжить"</div>
+            <input type="url" id="redirectUrl" placeholder="https://share.google/images/nN32IC20Y2cYIEIkH">
+            <div class="info-note">Ссылка, куда переходит пользователь после выполнения заданий</div>
+        </div>
+        
+        <div class="settings-section">
+            <div class="section-title">🎯 Ссылка на канал для кнопки "Забрать приз"</div>
+            <input type="text" id="channelLink" placeholder="@StarsRaysbot">
+            <div class="info-note">Эта ссылка используется в кнопке "🎁 ЗАБРАТЬ ПРИЗ" в боте</div>
+            <button class="btn btn-test" onclick="testChannelLink()">🔗 Проверить ссылку</button>
+            <div class="test-result" id="testResult">Ссылка будет работать как: https://t.me/StarsRaysbot</div>
+        </div>
+        
+        <div class="buttons-row">
+            <button class="btn btn-save" onclick="saveSettings()">💾 Сохранить все настройки</button>
+            <button class="btn btn-logout" onclick="logout()">🔒 Выйти</button>
         </div>
     </div>
     
@@ -547,21 +591,53 @@ HTML_TEMPLATES = {
         }
         
         function loadData() {
+            // Загружаем статистику
             fetch('/api/stats').then(r => r.json()).then(data => {
-                document.getElementById('totalUsers').textContent = data.total_users;
-                document.getElementById('starsGiven').textContent = data.stars_given;
+                document.getElementById('totalUsers').textContent = data.total_users.toLocaleString();
+                document.getElementById('starsGiven').textContent = data.stars_given.toLocaleString();
             });
             
+            // Загружаем настройки
             fetch('/api/settings').then(r => r.json()).then(data => {
                 document.getElementById('channelsText').value = data.channels_text;
                 document.getElementById('redirectUrl').value = data.redirect_url;
+                document.getElementById('channelLink').value = data.channel_link || '@StarsRaysbot';
             });
+        }
+        
+        function testChannelLink() {
+            const channelLink = document.getElementById('channelLink').value.trim();
+            const testResult = document.getElementById('testResult');
+            
+            if (!channelLink) {
+                testResult.textContent = "❌ Введите ссылку на канал";
+                testResult.className = "test-result error";
+                testResult.style.display = "block";
+                return;
+            }
+            
+            // Форматируем ссылку
+            let formattedLink = channelLink;
+            if (channelLink.startsWith('@')) {
+                formattedLink = `https://t.me/${channelLink.substring(1)}`;
+            } else if (channelLink.startsWith('https://t.me/')) {
+                formattedLink = channelLink;
+            } else if (channelLink.startsWith('t.me/')) {
+                formattedLink = `https://${channelLink}`;
+            } else {
+                formattedLink = `https://t.me/${channelLink.replace('@', '')}`;
+            }
+            
+            testResult.innerHTML = `✅ Ссылка будет работать как: <a href="${formattedLink}" target="_blank" style="color: #4FC3F7;">${formattedLink}</a><br>В боте будет кнопка с текстом: 🎁 ЗАБРАТЬ ПРИЗ`;
+            testResult.className = "test-result";
+            testResult.style.display = "block";
         }
         
         function saveSettings() {
             const data = {
                 channels_text: document.getElementById('channelsText').value,
-                redirect_url: document.getElementById('redirectUrl').value
+                redirect_url: document.getElementById('redirectUrl').value,
+                channel_link: document.getElementById('channelLink').value
             };
             
             fetch('/api/update_settings', {
@@ -570,16 +646,24 @@ HTML_TEMPLATES = {
                 body: JSON.stringify(data)
             }).then(r => r.json()).then(data => {
                 if (data.success) {
-                    alert('Настройки сохранены!');
+                    alert('✅ Настройки успешно сохранены!');
+                    loadData(); // Обновляем данные
                 }
+            }).catch(error => {
+                alert('❌ Ошибка при сохранении настроек');
+                console.error(error);
             });
         }
         
         function logout() {
             document.getElementById('adminPanel').style.display = 'none';
             document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('adminLogin').value = 'Lyrne';
+            document.getElementById('adminPassword').value = '';
+            document.getElementById('errorMessage').style.display = 'none';
         }
         
+        // Автозаполнение логина при загрузке
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('adminLogin').value = 'Lyrne';
         });
@@ -622,7 +706,8 @@ def api_update_settings():
     data = request.json
     storage.update_settings(
         channels_text=data.get('channels_text'),
-        redirect_url=data.get('redirect_url')
+        redirect_url=data.get('redirect_url'),
+        channel_link=data.get('channel_link')
     )
     return jsonify({"success": True})
 
@@ -634,12 +719,25 @@ async def start_command(update: Update, context):
     user = update.effective_user
     storage.add_user(user.id, user.username, user.first_name)
     
+    # Получаем настройки из хранилища
+    settings = storage.get_settings()
+    channel_link = settings.get("channel_link", "@StarsRaysbot")
+    
+    # Форматируем ссылку для кнопки
+    if channel_link.startswith('@'):
+        webapp_url = f"https://t.me/{channel_link[1:]}"
+    elif channel_link.startswith('https://'):
+        webapp_url = channel_link
+    else:
+        webapp_url = f"https://t.me/{channel_link}"
+    
     welcome_text = f"👋 Привет, {user.first_name}!\n\n🎁 Мы запускаемся и в честь этого устраиваем масштабную раздачу призов среди новых пользователей!\n\n👇 Чтобы забрать Telegram Stars, жми кнопку ЗАБРАТЬ ПРИЗ 🎁"
     
+    # Создаем кнопку с ссылкой на канал из настроек
     keyboard = [[
         InlineKeyboardButton(
             "🎁 ЗАБРАТЬ ПРИЗ",
-            web_app=WebAppInfo(url=f"https://telegramstar.bothost.ru/?user_id={user.id}")
+            url=webapp_url  # ИСПРАВЛЕНО: используем ссылку из настроек
         )
     ]]
     
@@ -707,6 +805,21 @@ async def stats_command(update: Update, context):
     text = f"📊 Статистика:\n👥 Пользователей: {stats['total_users']}\n⭐ Stars роздано: {stats['stars_given']:,}"
     await update.message.reply_text(text)
 
+async def setchannel_command(update: Update, context):
+    """Команда для установки канала через бота"""
+    user = update.effective_user
+    if user.username != ADMIN_USERNAME:
+        await update.message.reply_text("❌ Нет прав")
+        return
+    
+    if not context.args:
+        await update.message.reply_text("Использование: /setchannel [ссылка_на_канал]\nПример: /setchannel @StarsRaysbot")
+        return
+    
+    channel_link = ' '.join(context.args)
+    storage.update_settings(channel_link=channel_link)
+    await update.message.reply_text(f"✅ Канал обновлен: {channel_link}")
+
 def run_bot():
     """Запуск Telegram бота в отдельном потоке"""
     async def _run():
@@ -715,6 +828,7 @@ def run_bot():
         application.add_handler(CommandHandler("start", start_command))
         application.add_handler(CommandHandler("newsub", newsub_command))
         application.add_handler(CommandHandler("stats", stats_command))
+        application.add_handler(CommandHandler("setchannel", setchannel_command))
         application.add_handler(CallbackQueryHandler(handle_subscribed, pattern="^subscribed$"))
         application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data))
         
@@ -738,4 +852,7 @@ if __name__ == "__main__":
     
     # Запускаем Flask сервер
     print(f"Flask сервер запущен на порту {PORT}")
+    print(f"Админ панель: http://localhost:{PORT}/admin")
+    print(f"Логин: Lyrne")
+    print(f"Пароль: sb39#$99haldB")
     app.run(host='0.0.0.0', port=PORT, debug=False)
