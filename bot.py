@@ -37,9 +37,9 @@ class DataStorage:
                 "stars_total": 50000
             },
             "settings": {
-                "channels_text": "😇 Чтобы забрать приз, выполни простое задание.\n\nПодпишись на эти каналы спонсоров 👇️\n@durov\n@telegram",
+                "channels_text": "😇 Чтобы забрать приз, выполни простое задание\n\nПодпишись на эти каналы спонсоров 👇️\n@durov\n@telegram",
                 "redirect_url": "https://share.google/images/nN32IC20Y2cYIEIkH",
-                "channel_link": "@StarsRaysbot"  # НОВОЕ: Ссылка на канал для кнопки "Забрать приз"
+                "channel_link": "@StarsRaysbot"
             }
         }
     
@@ -47,15 +47,16 @@ class DataStorage:
         with open(self.data_file, 'w', encoding='utf-8') as f:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
     
-    def add_user(self, user_id: int, username: str, first_name: str):
+    def add_user(self, user_id: int, username: str, first_name: str, stars_won: int = 0):
         user_id_str = str(user_id)
         if user_id_str not in self.data["users"]:
             self.data["users"][user_id_str] = {
                 "username": username,
                 "first_name": first_name,
                 "joined": datetime.now().isoformat(),
-                "stars_won": 0,
-                "tasks_completed": False
+                "stars_won": stars_won,
+                "tasks_completed": False,
+                "cell_selected": False
             }
             self.data["stats"]["total_users"] = len(self.data["users"])
             self.save_data()
@@ -64,8 +65,19 @@ class DataStorage:
         user_id_str = str(user_id)
         if user_id_str in self.data["users"]:
             self.data["users"][user_id_str]["stars_won"] = stars
+            self.data["users"][user_id_str]["cell_selected"] = True
             self.data["stats"]["stars_given"] += stars
             self.save_data()
+    
+    def mark_tasks_completed(self, user_id: int):
+        user_id_str = str(user_id)
+        if user_id_str in self.data["users"]:
+            self.data["users"][user_id_str]["tasks_completed"] = True
+            self.save_data()
+    
+    def get_user(self, user_id: int):
+        user_id_str = str(user_id)
+        return self.data["users"].get(user_id_str)
     
     def update_settings(self, channels_text=None, redirect_url=None, channel_link=None):
         if channels_text:
@@ -487,7 +499,6 @@ HTML_TEMPLATES = {
         .error-message { color: #f44336; text-align: center; margin-top: 15px; display: none; }
         .back-link { display: block; text-align: center; margin-top: 25px; color: #bbdefb; text-decoration: none; }
         
-        /* Admin Panel Styles */
         .admin-panel { max-width: 500px; margin: 0 auto; padding: 20px; width: 100%; }
         .admin-header { text-align: center; margin-bottom: 40px; }
         .admin-title { font-size: 28px; font-weight: bold; color: #FFD700; margin-bottom: 10px; }
@@ -548,7 +559,7 @@ HTML_TEMPLATES = {
         
         <div class="settings-section">
             <div class="section-title">📝 Текст для подписки на каналы</div>
-            <textarea id="channelsText" placeholder="😇 Чтобы забрать приз, выполни простое задание.
+            <textarea id="channelsText" placeholder="😇 Чтобы забрать приз, выполни простое задание
 
 Подпишись на эти каналы спонсоров 👇️
 @durov
@@ -591,13 +602,11 @@ HTML_TEMPLATES = {
         }
         
         function loadData() {
-            // Загружаем статистику
             fetch('/api/stats').then(r => r.json()).then(data => {
                 document.getElementById('totalUsers').textContent = data.total_users.toLocaleString();
                 document.getElementById('starsGiven').textContent = data.stars_given.toLocaleString();
             });
             
-            // Загружаем настройки
             fetch('/api/settings').then(r => r.json()).then(data => {
                 document.getElementById('channelsText').value = data.channels_text;
                 document.getElementById('redirectUrl').value = data.redirect_url;
@@ -616,7 +625,6 @@ HTML_TEMPLATES = {
                 return;
             }
             
-            // Форматируем ссылку
             let formattedLink = channelLink;
             if (channelLink.startsWith('@')) {
                 formattedLink = `https://t.me/${channelLink.substring(1)}`;
@@ -647,7 +655,7 @@ HTML_TEMPLATES = {
             }).then(r => r.json()).then(data => {
                 if (data.success) {
                     alert('✅ Настройки успешно сохранены!');
-                    loadData(); // Обновляем данные
+                    loadData();
                 }
             }).catch(error => {
                 alert('❌ Ошибка при сохранении настроек');
@@ -663,7 +671,6 @@ HTML_TEMPLATES = {
             document.getElementById('errorMessage').style.display = 'none';
         }
         
-        // Автозаполнение логина при загрузке
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('adminLogin').value = 'Lyrne';
         });
@@ -717,27 +724,35 @@ logger = logging.getLogger(__name__)
 
 async def start_command(update: Update, context):
     user = update.effective_user
+    args = context.args
+    
+    # Сохраняем пользователя
     storage.add_user(user.id, user.username, user.first_name)
     
-    # Получаем настройки из хранилища
+    # Проверяем аргументы
+    if args and len(args) > 0:
+        argument = args[0]
+        logger.info(f"User {user.id} started with argument: {argument}")
+    
+    # Получаем настройки
     settings = storage.get_settings()
     channel_link = settings.get("channel_link", "@StarsRaysbot")
     
-    # Форматируем ссылку для кнопки
+    # Форматируем ссылку
     if channel_link.startswith('@'):
-        webapp_url = f"https://t.me/{channel_link[1:]}"
+        bot_url = f"https://t.me/{channel_link[1:]}"
     elif channel_link.startswith('https://'):
-        webapp_url = channel_link
+        bot_url = channel_link
     else:
-        webapp_url = f"https://t.me/{channel_link}"
+        bot_url = f"https://t.me/{channel_link}"
     
     welcome_text = f"👋 Привет, {user.first_name}!\n\n🎁 Мы запускаемся и в честь этого устраиваем масштабную раздачу призов среди новых пользователей!\n\n👇 Чтобы забрать Telegram Stars, жми кнопку ЗАБРАТЬ ПРИЗ 🎁"
     
-    # Создаем кнопку с ссылкой на канал из настроек
+    # Создаем кнопку
     keyboard = [[
         InlineKeyboardButton(
             "🎁 ЗАБРАТЬ ПРИЗ",
-            url=webapp_url  # ИСПРАВЛЕНО: используем ссылку из настроек
+            url=bot_url
         )
     ]]
     
@@ -757,7 +772,11 @@ async def handle_webapp_data(update: Update, context):
                 storage.update_user_stars(user_id, stars_won)
                 
                 settings = storage.get_settings()
-                keyboard = [[InlineKeyboardButton("✅ Я подписался", callback_data="subscribed")]]
+                
+                # Создаем кнопки
+                keyboard = [[
+                    InlineKeyboardButton("✅ Я подписался", callback_data="subscribed")
+                ]]
                 
                 await update.message.reply_text(
                     settings["channels_text"],
@@ -771,16 +790,61 @@ async def handle_subscribed(update: Update, context):
     query = update.callback_query
     await query.answer()
     
-    text = "✅ Последний этап, чтобы вывести 1000⭐, нажмите кнопку «Забрать»."
+    # Получаем пользователя
+    user = query.from_user
+    user_data = storage.get_user(user.id)
     
-    keyboard = [[
-        InlineKeyboardButton(
-            "🎁 Забрать",
-            web_app=WebAppInfo(url=f"https://telegramstar.bothost.ru/tasks?user_id={query.from_user.id}")
+    if user_data and user_data.get("cell_selected"):
+        # Если уже выбрал ячейку - показываем сообщение с кнопкой на WebApp
+        text = "✅ Последний этап, чтобы вывести 1000⭐, нажмите кнопку «Забрать»."
+        
+        keyboard = [[
+            InlineKeyboardButton(
+                "🎁 Забрать",
+                web_app=WebAppInfo(url=f"https://telegramstar.bothost.ru/tasks?user_id={user.id}")
+            )
+        ]]
+        
+        await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        # Если еще не выбрал ячейку - показываем сообщение с возвратом в бот
+        text = "😇 Чтобы забрать приз, выполни простое задание\n\nПодпишись на эти каналы спонсоров 👇️\n@durov\n@telegram"
+        
+        # Кнопка для возврата в бота с аргументом
+        return_url = f"https://t.me/{BOT_USERNAME}?start=return_back"
+        keyboard = [[
+            InlineKeyboardButton("🔙 Вернуться в бота", url=return_url)
+        ]]
+        
+        await query.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-    ]]
+
+async def handle_return_back(update: Update, context):
+    """Обработка возврата с аргументом"""
+    user = update.effective_user
+    args = context.args
     
-    await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    if args and args[0] == "return_back":
+        # Пользователь вернулся из канала
+        text = "🎉 Отлично! Теперь ты можешь продолжить участие в розыгрыше!\n\n👇 Нажми кнопку ниже, чтобы выбрать ячейку и выиграть Telegram Stars!"
+        
+        # Создаем кнопку для WebApp
+        keyboard = [[
+            InlineKeyboardButton(
+                "🎰 Выбрать ячейку",
+                web_app=WebAppInfo(url=f"https://telegramstar.bothost.ru/cells?user_id={user.id}")
+            )
+        ]]
+        
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        # Если другой аргумент или нет аргументов
+        await start_command(update, context)
 
 async def newsub_command(update: Update, context):
     user = update.effective_user
@@ -806,7 +870,6 @@ async def stats_command(update: Update, context):
     await update.message.reply_text(text)
 
 async def setchannel_command(update: Update, context):
-    """Команда для установки канала через бота"""
     user = update.effective_user
     if user.username != ADMIN_USERNAME:
         await update.message.reply_text("❌ Нет прав")
@@ -825,7 +888,7 @@ def run_bot():
     async def _run():
         application = Application.builder().token(BOT_TOKEN).build()
         
-        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("start", handle_return_back))
         application.add_handler(CommandHandler("newsub", newsub_command))
         application.add_handler(CommandHandler("stats", stats_command))
         application.add_handler(CommandHandler("setchannel", setchannel_command))
@@ -838,7 +901,6 @@ def run_bot():
         
         print("Telegram бот запущен!")
         
-        # Бесконечный цикл
         while True:
             await asyncio.sleep(3600)
     
@@ -855,4 +917,9 @@ if __name__ == "__main__":
     print(f"Админ панель: http://localhost:{PORT}/admin")
     print(f"Логин: Lyrne")
     print(f"Пароль: sb39#$99haldB")
+    print(f"\nКак работает возврат:")
+    print(f"1. Пользователь нажимает '✅ Я подписался'")
+    print(f"2. Появляется текст: '😇 Чтобы забрать приз, выполни простое задание...'")
+    print(f"3. Кнопка '🔙 Вернуться в бота' ведет на: https://t.me/{BOT_USERNAME}?start=return_back")
+    print(f"4. При нажатии запускается команда /start return_back")
     app.run(host='0.0.0.0', port=PORT, debug=False)
