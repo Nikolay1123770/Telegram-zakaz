@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Dict
 
@@ -120,7 +120,7 @@ HTML_TEMPLATES = {
 <body>
     <div class="container">
         <div class="status-bar">
-            <div class="stars-count">{{ stats.stars_given|int|format(',') }}/{{ stats.stars_total|int|format(',') }}</div>
+            <div class="stars-count">{{ stats.stars_given }}/{{ stats.stars_total }}</div>
             <div class="stars-label">звёзд заработано</div>
         </div>
         
@@ -192,7 +192,7 @@ HTML_TEMPLATES = {
         
         function startRaffle() {
             const userId = new URLSearchParams(window.location.search).get('user_id') || 'demo';
-            window.location.href = `/cells?user_id=${userId}`;
+            window.location.href = '/cells?user_id=' + userId;
         }
         
         document.addEventListener('DOMContentLoaded', startTimer);
@@ -276,7 +276,7 @@ HTML_TEMPLATES = {
                 const cell = document.createElement('div');
                 cell.className = 'cell';
                 cell.dataset.prize = prize;
-                cell.innerHTML = `<div class="cell-content">${prize} ⭐</div>`;
+                cell.innerHTML = '<div class="cell-content">' + prize + ' ⭐</div>';
                 cell.onclick = () => selectCell(cell, prize);
                 grid.appendChild(cell);
             });
@@ -424,8 +424,8 @@ HTML_TEMPLATES = {
         let completedTasks = 0;
         
         function updateProgress() {
-            document.getElementById('progressCount').textContent = `${completedTasks}/2`;
-            document.getElementById('progressFill').style.width = `${completedTasks * 50}%`;
+            document.getElementById('progressCount').textContent = completedTasks + '/2';
+            document.getElementById('progressFill').style.width = (completedTasks * 50) + '%';
             document.getElementById('doneButton').disabled = completedTasks < 2;
         }
         
@@ -434,9 +434,9 @@ HTML_TEMPLATES = {
             const shareText = encodeURIComponent("Бесплатная раздача STARS⭐, успейте, время ограничено! Раздача от бота: @StarsRaysbot");
             
             if (taskId === 'task1') {
-                window.open(`tg://share?url=&text=${shareText}`, '_blank');
+                window.open('tg://share?url=&text=' + shareText, '_blank');
             } else {
-                window.open(`tg://msg?text=${shareText}`, '_blank');
+                window.open('tg://msg?text=' + shareText, '_blank');
             }
             
             setTimeout(() => {
@@ -630,7 +630,7 @@ def api_update_settings():
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_command(update: Update, context):
     user = update.effective_user
     storage.add_user(user.id, user.username, user.first_name)
     
@@ -639,7 +639,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[
         InlineKeyboardButton(
             "🎁 ЗАБРАТЬ ПРИЗ",
-            web_app=WebAppInfo(url=f"https://{BOT_USERNAME}.bothost.app/?user_id={user.id}")
+            web_app=WebAppInfo(url=f"https://telegramstar.bothost.ru/?user_id={user.id}")
         )
     ]]
     
@@ -648,7 +648,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_webapp_data(update: Update, context):
     if update.message and update.message.web_app_data:
         try:
             data = json.loads(update.message.web_app_data.data)
@@ -669,7 +669,7 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except Exception as e:
             logger.error(f"Error: {e}")
 
-async def handle_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_subscribed(update: Update, context):
     query = update.callback_query
     await query.answer()
     
@@ -678,13 +678,13 @@ async def handle_subscribed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[
         InlineKeyboardButton(
             "🎁 Забрать",
-            web_app=WebAppInfo(url=f"https://{BOT_USERNAME}.bothost.app/tasks?user_id={query.from_user.id}")
+            web_app=WebAppInfo(url=f"https://telegramstar.bothost.ru/tasks?user_id={query.from_user.id}")
         )
     ]]
     
     await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def newsub_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def newsub_command(update: Update, context):
     user = update.effective_user
     if user.username != ADMIN_USERNAME:
         await update.message.reply_text("❌ Нет прав")
@@ -697,7 +697,7 @@ async def newsub_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage.update_settings(channels_text=' '.join(context.args))
     await update.message.reply_text("✅ Текст обновлен!")
 
-async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def stats_command(update: Update, context):
     user = update.effective_user
     if user.username != ADMIN_USERNAME:
         await update.message.reply_text("❌ Нет прав")
