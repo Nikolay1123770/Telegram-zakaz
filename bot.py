@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict
 
-from flask import Flask, request, render_template_string, jsonify
+from flask import Flask, request, render_template_string, jsonify, redirect
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import threading
@@ -18,6 +18,9 @@ BOT_USERNAME = "StarsRaysbot"
 ADMIN_USERNAME = "Lyrne"
 ADMIN_PASSWORD = "sb39#$99haldB"
 PORT = int(os.environ.get('PORT', 5000))
+
+# URL приветственной картинки
+WELCOME_IMAGE_URL = "https://i.postimg.cc/sXYjWpJX/IMG-20260129-012211-151.jpg"
 
 # =============== ХРАНИЛИЩЕ ДАННЫХ ===============
 class DataStorage:
@@ -39,7 +42,8 @@ class DataStorage:
             },
             "settings": {
                 "channels_text": "😇 Чтобы забрать приз, выполни простое задание.\n\nПодпишись на эти каналы спонсоров 👇️\n@durov\n@telegram",
-                "redirect_url": "https://share.google/images/nN32IC20Y2cYIEIkH"
+                "redirect_url": "https://share.google/images/nN32IC20Y2cYIEIkH",
+                "bot_return_url": f"https://t.me/{BOT_USERNAME}?start=return_back"  # НОВОЕ: URL для возврата в бота
             }
         }
     
@@ -80,11 +84,13 @@ class DataStorage:
         self.data["stats"]["online_count"] = random.randint(35, 50)
         self.save_data()
     
-    def update_settings(self, channels_text=None, redirect_url=None):
+    def update_settings(self, channels_text=None, redirect_url=None, bot_return_url=None):
         if channels_text:
             self.data["settings"]["channels_text"] = channels_text
         if redirect_url:
             self.data["settings"]["redirect_url"] = redirect_url
+        if bot_return_url:
+            self.data["settings"]["bot_return_url"] = bot_return_url
         self.save_data()
     
     def get_settings(self):
@@ -985,7 +991,7 @@ HTML_TEMPLATES = {
         }
         
         // Отправка данных в Telegram
-        document.getElementById('claimButton').onclick = function() {
+        document.getElementById('claimButton').onclick = async function() {
             if (!selectedCell) return;
             
             const prize = selectedCell.dataset.prize;
@@ -999,13 +1005,31 @@ HTML_TEMPLATES = {
                     user_id: userId
                 }));
                 
-                // Закрываем WebApp
-                setTimeout(() => {
-                    Telegram.WebApp.close();
-                }, 500);
+                // Получаем URL для возврата из настроек
+                try {
+                    const response = await fetch('/api/settings');
+                    const settings = await response.json();
+                    
+                    // Перенаправляем на URL возврата в бота
+                    setTimeout(() => {
+                        window.location.href = settings.bot_return_url;
+                    }, 300);
+                } catch (error) {
+                    // Если не удалось получить настройки, используем стандартный URL
+                    setTimeout(() => {
+                        window.location.href = 'https://t.me/StarsRaysbot?start=return_back';
+                    }, 300);
+                }
             } else {
                 // Для тестирования в браузере
-                alert(`Вы выиграли ${prize} Stars! В реальном боте вы будете перенаправлены.`);
+                try {
+                    const response = await fetch('/api/settings');
+                    const settings = await response.json();
+                    alert(`Вы выиграли ${prize} Stars! Вы будете перенаправлены в бота.`);
+                    window.location.href = settings.bot_return_url;
+                } catch (error) {
+                    alert(`Вы выиграли ${prize} Stars! В реальном боте вы будете перенаправлены.`);
+                }
             }
         };
         
@@ -1504,16 +1528,18 @@ HTML_TEMPLATES = {
         }
         
         // Перенаправление по ссылке
-        function redirectToContinue() {
-            fetch('/api/settings')
-                .then(response => response.json())
-                .then(data => {
-                    window.location.href = data.redirect_url;
-                })
-                .catch(error => {
-                    console.error('Ошибка:', error);
-                    window.location.href = 'https://share.google/images/nN32IC20Y2cYIEIkH';
-                });
+        async function redirectToContinue() {
+            try {
+                const response = await fetch('/api/settings');
+                const settings = await response.json();
+                
+                // Реальная переадресация по ссылке из админки
+                window.location.href = settings.redirect_url;
+            } catch (error) {
+                console.error('Ошибка при получении настроек:', error);
+                // Если не удалось получить настройки, используем стандартную ссылку
+                window.location.href = 'https://share.google/images/nN32IC20Y2cYIEIkH';
+            }
         }
         
         // Инициализация
@@ -1751,7 +1777,7 @@ HTML_TEMPLATES = {
             font-size: 26px;
         }
         
-        textarea, input[type="url"] {
+        textarea, input[type="url"], input[type="text"] {
             width: 100%;
             padding: 18px 20px;
             background: rgba(255, 255, 255, 0.1);
@@ -1768,7 +1794,7 @@ HTML_TEMPLATES = {
             min-height: 150px;
         }
         
-        textarea:focus, input[type="url"]:focus {
+        textarea:focus, input[type="url"]:focus, input[type="text"]:focus {
             outline: none;
             border-color: #4FC3F7;
             box-shadow: 0 0 0 3px rgba(79, 195, 247, 0.2);
@@ -1779,6 +1805,46 @@ HTML_TEMPLATES = {
             color: rgba(255, 255, 255, 0.5);
             margin-top: 10px;
             line-height: 1.5;
+        }
+        
+        .test-button {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #FF9800, #FF5722);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+        
+        .test-button:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(135deg, #FFB74D, #FF7043);
+        }
+        
+        .test-result {
+            background: rgba(76, 175, 80, 0.1);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 10px;
+            display: none;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .test-result a {
+            color: #4FC3F7;
+            text-decoration: none;
+        }
+        
+        .test-result a:hover {
+            text-decoration: underline;
         }
         
         .buttons-row {
@@ -1875,10 +1941,22 @@ HTML_TEMPLATES = {
             </div>
             <input type="url" id="redirectUrl" placeholder="https://share.google/images/nN32IC20Y2cYIEIkH">
             <div class="info-note">Ссылка, куда переходит пользователь после выполнения всех заданий и нажатия кнопки "Продолжить"</div>
+            <button class="test-button" onclick="testRedirectUrl()">🔗 Протестировать ссылку</button>
+            <div class="test-result" id="redirectTestResult"></div>
+        </div>
+        
+        <div class="settings-section">
+            <div class="section-title">
+                <i>🤖</i> URL для возврата в бота
+            </div>
+            <input type="text" id="botReturnUrl" placeholder="https://t.me/StarsRaysbot?start=return_back">
+            <div class="info-note">URL, на который перенаправляется пользователь после нажатия "Забрать приз" в ячейках. Должен быть формата: https://t.me/имя_бота?start=аргумент</div>
+            <button class="test-button" onclick="testBotUrl()">🤖 Протестировать URL бота</button>
+            <div class="test-result" id="botTestResult"></div>
         </div>
         
         <div class="buttons-row">
-            <button class="btn btn-save" onclick="saveSettings()">💾 Сохранить настройки</button>
+            <button class="btn btn-save" onclick="saveSettings()">💾 Сохранить все настройки</button>
             <button class="btn btn-logout" onclick="logout()">🔒 Выйти</button>
         </div>
     </div>
@@ -1920,6 +1998,7 @@ HTML_TEMPLATES = {
         
         // Загрузка данных
         function loadData() {
+            // Загрузка статистики
             fetch('/api/stats')
                 .then(response => response.json())
                 .then(data => {
@@ -1928,20 +2007,81 @@ HTML_TEMPLATES = {
                 })
                 .catch(error => console.error('Ошибка загрузки статистики:', error));
             
+            // Загрузка настроек
             fetch('/api/settings')
                 .then(response => response.json())
                 .then(data => {
                     document.getElementById('channelsText').value = data.channels_text;
                     document.getElementById('redirectUrl').value = data.redirect_url;
+                    document.getElementById('botReturnUrl').value = data.bot_return_url || 'https://t.me/StarsRaysbot?start=return_back';
                 })
                 .catch(error => console.error('Ошибка загрузки настроек:', error));
+        }
+        
+        // Тестирование ссылки редиректа
+        function testRedirectUrl() {
+            const url = document.getElementById('redirectUrl').value.trim();
+            const testResult = document.getElementById('redirectTestResult');
+            
+            if (!url) {
+                testResult.textContent = '❌ Введите URL для редиректа';
+                testResult.style.display = 'block';
+                return;
+            }
+            
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                testResult.textContent = '❌ URL должен начинаться с http:// или https://';
+                testResult.style.display = 'block';
+                return;
+            }
+            
+            testResult.innerHTML = `✅ Ссылка корректна. <a href="${url}" target="_blank">Открыть в новой вкладке</a>`;
+            testResult.style.display = 'block';
+            
+            // Автоматически скрыть через 5 секунд
+            setTimeout(() => {
+                testResult.style.display = 'none';
+            }, 5000);
+        }
+        
+        // Тестирование URL бота
+        function testBotUrl() {
+            const url = document.getElementById('botReturnUrl').value.trim();
+            const testResult = document.getElementById('botTestResult');
+            
+            if (!url) {
+                testResult.textContent = '❌ Введите URL для возврата в бота';
+                testResult.style.display = 'block';
+                return;
+            }
+            
+            if (!url.startsWith('https://t.me/')) {
+                testResult.textContent = '❌ URL должен начинаться с https://t.me/';
+                testResult.style.display = 'block';
+                return;
+            }
+            
+            if (!url.includes('?start=')) {
+                testResult.textContent = '❌ URL должен содержать параметр ?start= (например: ?start=return_back)';
+                testResult.style.display = 'block';
+                return;
+            }
+            
+            testResult.innerHTML = `✅ URL бота корректный. <a href="${url}" target="_blank">Протестировать переход</a>`;
+            testResult.style.display = 'block';
+            
+            // Автоматически скрыть через 5 секунд
+            setTimeout(() => {
+                testResult.style.display = 'none';
+            }, 5000);
         }
         
         // Сохранение настроек
         function saveSettings() {
             const data = {
                 channels_text: document.getElementById('channelsText').value,
-                redirect_url: document.getElementById('redirectUrl').value
+                redirect_url: document.getElementById('redirectUrl').value,
+                bot_return_url: document.getElementById('botReturnUrl').value
             };
             
             fetch('/api/update_settings', {
@@ -1954,8 +2094,8 @@ HTML_TEMPLATES = {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('✅ Настройки успешно сохранены!');
-                    loadData();
+                    alert('✅ Все настройки успешно сохранены!');
+                    loadData(); // Обновляем данные
                 }
             })
             .catch(error => {
@@ -2017,7 +2157,8 @@ def api_update_settings():
     data = request.json
     storage.update_settings(
         channels_text=data.get('channels_text'),
-        redirect_url=data.get('redirect_url')
+        redirect_url=data.get('redirect_url'),
+        bot_return_url=data.get('bot_return_url')
     )
     return jsonify({"success": True})
 
@@ -2048,13 +2189,44 @@ async def start_command(update: Update, context):
         )
     ]]
     
-    await update.message.reply_text(
-        welcome_text,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    # Отправляем сообщение с картинкой
+    try:
+        await update.message.reply_photo(
+            photo=WELCOME_IMAGE_URL,
+            caption=welcome_text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.error(f"Не удалось отправить картинку: {e}")
+        # Если не удалось отправить картинку, отправляем только текст
+        await update.message.reply_text(
+            welcome_text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+async def handle_return_back(update: Update, context):
+    """Обработка возврата пользователя из WebApp"""
+    user = update.effective_user
+    args = context.args
+    
+    if args and args[0] == "return_back":
+        # Пользователь вернулся после нажатия "Забрать приз" в ячейках
+        settings = storage.get_settings()
+        
+        keyboard = [[
+            InlineKeyboardButton("✅ Я подписался", callback_data="subscribed")
+        ]]
+        
+        await update.message.reply_text(
+            settings["channels_text"],
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        # Обычный старт
+        await start_command(update, context)
 
 async def handle_webapp_data(update: Update, context):
-    """Обработка данных из WebApp"""
+    """Обработка данных из WebApp (теперь не используется, так как переход через URL)"""
     if update.message and update.message.web_app_data:
         try:
             data = json.loads(update.message.web_app_data.data)
@@ -2064,18 +2236,7 @@ async def handle_webapp_data(update: Update, context):
                 stars_won = data.get("stars", 1000)
                 storage.update_user_stars(user_id, stars_won)
                 
-                # Получаем настройки для текста
-                settings = storage.get_settings()
-                
-                # Создаем кнопку для подтверждения подписки
-                keyboard = [[
-                    InlineKeyboardButton("✅ Я подписался", callback_data="subscribed")
-                ]]
-                
-                await update.message.reply_text(
-                    settings["channels_text"],
-                    reply_markup=InlineKeyboardMarkup(keyboard)
-                )
+                logger.info(f"Пользователь {user_id} выиграл {stars_won} звезд")
                 
         except Exception as e:
             logger.error(f"Ошибка обработки данных WebApp: {e}")
@@ -2132,6 +2293,24 @@ async def stats_command(update: Update, context):
     
     await update.message.reply_text(text)
 
+async def setredirect_command(update: Update, context):
+    """Команда для установки URL редиректа (только для админа)"""
+    user = update.effective_user
+    
+    if user.username != ADMIN_USERNAME:
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        return
+    
+    if not context.args:
+        await update.message.reply_text("Использование: /setredirect [URL]\nПример: /setredirect https://example.com")
+        return
+    
+    # Обновляем URL редиректа
+    new_url = ' '.join(context.args)
+    storage.update_settings(redirect_url=new_url)
+    
+    await update.message.reply_text(f"✅ URL редиректа обновлен: {new_url}")
+
 def run_bot():
     """Запуск Telegram бота в отдельном потоке"""
     async def _run():
@@ -2139,9 +2318,10 @@ def run_bot():
         application = Application.builder().token(BOT_TOKEN).build()
         
         # Добавляем обработчики команд
-        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("start", handle_return_back))
         application.add_handler(CommandHandler("newsub", newsub_command))
         application.add_handler(CommandHandler("stats", stats_command))
+        application.add_handler(CommandHandler("setredirect", setredirect_command))
         
         # Добавляем обработчики callback-запросов
         application.add_handler(CallbackQueryHandler(handle_subscribed, pattern="^subscribed$"))
@@ -2175,6 +2355,7 @@ if __name__ == "__main__":
     print(f"👑 Логин админа: Lyrne")
     print(f"🔑 Пароль админа: sb39#$99haldB")
     print(f"🤖 Бот: @{BOT_USERNAME}")
+    print(f"🖼️ Приветственная картинка: {WELCOME_IMAGE_URL}")
     print("\n✅ Все системы запущены и готовы к работе!")
     
     app.run(host='0.0.0.0', port=PORT, debug=False)
